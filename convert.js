@@ -61,11 +61,35 @@ function processCSV(data) {
     return;
   }
 
+  // Trouver la ligne d'en-tête (peut ne pas être la première ligne)
+  let headerRowIndex = -1;
+  let headers = [];
+  
+  for (let i = 0; i < Math.min(data.length, 20); i++) {
+    const row = data[i].map((h) => h.trim());
+    const dateCol = findColumn(row, ["date"]);
+    const libelleCol = findColumn(row, ["libellé", "libelle", "libellÃ©"]);
+    
+    if (dateCol !== -1 && libelleCol !== -1) {
+      headerRowIndex = i;
+      headers = row;
+      break;
+    }
+  }
+
+  if (headerRowIndex === -1) {
+    showStatus(
+      "Ligne d'en-tête non trouvée. Recherche: Date, Libellé",
+      "error"
+    );
+    return;
+  }
+
   // Trouver les colonnes
-  const headers = data[0].map((h) => h.trim());
   const dateCol = findColumn(headers, ["date"]);
   const libelleCol = findColumn(headers, ["libellé", "libelle", "libellÃ©"]);
   const debitCol = findColumn(headers, ["débit", "debit", "dÃ©bit"]);
+  const creditCol = findColumn(headers, ["crédit", "credit", "crÃ©dit"]);
 
   if (dateCol === -1 || libelleCol === -1 || debitCol === -1) {
     showStatus(
@@ -81,11 +105,18 @@ function processCSV(data) {
 
   // Créer le nouveau tableau
   const newData = [["Date", "Payee", "Memo", "Outflow"]];
+  let skippedLines = 0;
 
-  // Convertir les données
-  for (let i = 1; i < data.length; i++) {
+  // Convertir les données (commencer après la ligne d'en-tête)
+  for (let i = headerRowIndex + 1; i < data.length; i++) {
     const row = data[i];
     if (row.length > Math.max(dateCol, libelleCol, debitCol)) {
+      // Ignorer les lignes qui ont une valeur dans la colonne Crédit
+      if (creditCol !== -1 && row[creditCol] && row[creditCol].trim() !== "") {
+        skippedLines++;
+        continue;
+      }
+      
       newData.push([
         row[dateCol] || "",
         "", // Payee vide
@@ -96,10 +127,11 @@ function processCSV(data) {
   }
 
   convertedData = newData;
-  showStatus(
-    `✅ Conversion réussie! ${newData.length - 1} lignes traitées`,
-    "success"
-  );
+  const statusMessage = skippedLines > 0
+    ? `✅ Conversion réussie! ${newData.length - 1} lignes traitées (${skippedLines} lignes de crédit ignorées)`
+    : `✅ Conversion réussie! ${newData.length - 1} lignes traitées`;
+  
+  showStatus(statusMessage, "success");
   showMappingInfo(
     { date: dateCol, libelle: libelleCol, debit: debitCol },
     headers,
